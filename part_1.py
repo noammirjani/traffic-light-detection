@@ -26,11 +26,11 @@ GREEN_Y_COORDINATES = List[int]
 
 
 def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int], List[int], List[int]]:
-    # c_image = ndimage.maximum_filter(c_image, 0.5)
-    # c_image = cv2.GaussianBlur(c_image, (5, 5), 0.6)
+    c_image = ndimage.maximum_filter(c_image, 0.5)
+    blur = cv2.GaussianBlur(c_image, (5, 5), 0.6)
 
     # Convert the image to the HSV color space for better color detection
-    hsv_image = cv2.cvtColor(c_image, cv2.COLOR_RGB2HSV)
+    hsv_image = cv2.cvtColor(blur, cv2.COLOR_RGB2HSV)
 
     # Define the lower and upper thresholds for red and green colors in HSV space
     lower_red = np.array([0, 100, 100])
@@ -55,7 +55,7 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int]
     red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
 
     # Threshold the image in the green channel to extract green areas
-    green_threshold = 189  # Fine-tune this threshold depending on our images, higher mean less dummy points
+    green_threshold = 140  # Fine-tune this threshold depending on our images, higher mean less dummy points
     green_channel = c_image[:, :, 1]
     green_mask_channel = (green_channel > green_threshold).astype(np.uint8)
 
@@ -73,7 +73,7 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int]
     green_y = [int(np.mean(contour[:, :, 1])) for contour in green_contours] if green_contours else []
 
     # Filter points that are too close, because we want one point for each object
-    min_distance = 100
+    min_distance = 50
     red_x, red_y = filter_close_points(red_x, red_y, min_distance)
     green_x, green_y = filter_close_points(green_x, green_y, min_distance)
 
