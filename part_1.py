@@ -25,7 +25,7 @@ GREEN_Y_COORDINATES = List[int]
 
 def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, list]:
 
-    blur = cv2.GaussianBlur(c_image, (5,5),1)
+    blur = cv2.GaussianBlur(c_image, (3,3), 0.3)
 
     # Convert the image to the HSV color space for better color detection
     hsv_image = cv2.cvtColor(blur, cv2.COLOR_RGB2HSV)
@@ -34,27 +34,29 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, li
     lower_red = np.array([0, 100, 100])
     upper_red = np.array([10, 255, 255])
 
-    # Define the lower and upper thresholds for green colors in HSV space
-    # Fine-tune these values based on the specific green color of traffic lights
     lower_green = np.array([50, 100, 100])
-    upper_green = np.array([80, 255, 255])
+    upper_green = np.array([100, 255, 255])
 
     # Create masks for red and green colors using the specified thresholds
     red_mask = cv2.inRange(hsv_image, lower_red, upper_red)
     green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
 
     # Apply maximum_filter to the green mask to enhance the green areas
-    green_mask = maximum_filter(green_mask, size=10)  # we can Adjust the size as needed
-
-    red_mask = maximum_filter(red_mask, size=10)  # we can Adjust the size as needed
-
+    green_mask = maximum_filter(green_mask, size=10)
+    red_mask = maximum_filter(red_mask, size=10)
 
     # Use morphological operations to clean up the green mask and remove noise
-    kernel = np.ones((5, 5), np.uint8)  # kernel size 5*5 of all 1
+    kernel = np.array([[-1, -1, -1],
+                       [-1, 8, -1],
+                       [-1, -1, -1]])
     green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
 
+    # Apply convolution with the provided kernel to green and red masks
+    green_mask = cv2.filter2D(green_mask, -1, kernel)
+    red_mask = cv2.filter2D(red_mask, -1, kernel)
+
+
     # Find contours in the masks to get the coordinates of the red and green areas
-    # Use cv2.RETR_TREE to find all contours and reconstruct the full hierarchy
     red_contours, _ = cv2.findContours(red_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     green_contours, _ = cv2.findContours(green_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -84,7 +86,7 @@ def show_image_and_gt(c_image: np.ndarray, objects: Optional[List[POLYGON_OBJECT
             polygon_array = poly[np.arange(len(poly)) % len(poly)]
             # gets the x coordinates (first column -> 0) anf y coordinates (second column -> 1)
             x_coordinates, y_coordinates = polygon_array[:, 0], polygon_array[:, 1]
-            color = 'r'
+            color = 'b'
             plt.plot(x_coordinates, y_coordinates, color, label=image_object['label'])
             labels.add(image_object['label'])
         if 1 < len(labels):
