@@ -4,13 +4,15 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from scipy import signal as sg, ndimage
-from scipy.ndimage import maximum_filter
+
 from PIL import Image
 import matplotlib.pyplot as plt
 
 import cv2
 # if you wanna iterate over multiple files and json, the default source folder name is this.
+from scipy import ndimage
+from scipy.ndimage import maximum_filter
+
 DEFAULT_BASE_DIR: str = 'INSERT_YOUR_DIR_WITH_PNG_AND_JSON_HERE'
 
 # The label we wanna look for in the polygons json file
@@ -23,14 +25,12 @@ GREEN_X_COORDINATES = List[int]
 GREEN_Y_COORDINATES = List[int]
 
 
-def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, list]:
-
-    c_image = ndimage.maximum_filter(c_image, 0.5)
-
-    blur = cv2.GaussianBlur(c_image, (5,5), 0.6)
+def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int], List[int], List[int]]:
+    # c_image = ndimage.maximum_filter(c_image, 0.5)
+    # c_image = cv2.GaussianBlur(c_image, (5, 5), 0.6)
 
     # Convert the image to the HSV color space for better color detection
-    hsv_image = cv2.cvtColor(blur, cv2.COLOR_RGB2HSV)
+    hsv_image = cv2.cvtColor(c_image, cv2.COLOR_RGB2HSV)
 
     # Define the lower and upper thresholds for red and green colors in HSV space
     lower_red = np.array([0, 100, 100])
@@ -43,34 +43,61 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, li
     red_mask = cv2.inRange(hsv_image, lower_red, upper_red)
     green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
 
-    # Apply maximum_filter to the green mask to enhance the green areas
-    green_mask = maximum_filter(green_mask, size=20)
-    red_mask = maximum_filter(red_mask, size=20)
+    # enhance the green and areas (higher size make less points one light)
+    # green_mask = maximum_filter(green_mask, size=20)
+    # red_mask = maximum_filter(red_mask, size=20)
 
     # Use morphological operations to clean up the green mask and remove noise
     kernel = np.array([[-1, -1, -1],
                        [-1, 8, -1],
-                       [-1, -1, -1]])/9
+                       [-1, -1, -1]]) / 9
     green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
     red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
 
-    # Apply convolution with the provided kernel to green and red masks
-    green_mask = cv2.filter2D(green_mask, -1, kernel)
-    red_mask = cv2.filter2D(red_mask, -1, kernel)
+    # Threshold the image in the green channel to extract green areas
+    green_threshold = 189  # Fine-tune this threshold depending on our images, higher mean less dummy points
+    green_channel = c_image[:, :, 1]
+    green_mask_channel = (green_channel > green_threshold).astype(np.uint8)
 
+    # Combine the green mask and green channel threshold to keep only common green areas
+    green_mask = cv2.bitwise_and(green_mask, green_mask_channel)
 
     # Find contours in the masks to get the coordinates of the red and green areas
     red_contours, _ = cv2.findContours(red_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     green_contours, _ = cv2.findContours(green_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     # Extract the x and y coordinates of the red and green areas
-    red_x = [int(np.mean(contour[:, :, 0])) for contour in red_contours]
-    red_y = [int(np.mean(contour[:, :, 1])) for contour in red_contours]
-    green_x = [int(np.mean(contour[:, :, 0])) for contour in green_contours]
-    green_y = [int(np.mean(contour[:, :, 1])) for contour in green_contours]
+    red_x = [int(np.mean(contour[:, :, 0])) for contour in red_contours] if red_contours else []
+    red_y = [int(np.mean(contour[:, :, 1])) for contour in red_contours] if red_contours else []
+    green_x = [int(np.mean(contour[:, :, 0])) for contour in green_contours] if green_contours else []
+    green_y = [int(np.mean(contour[:, :, 1])) for contour in green_contours] if green_contours else []
+
+    # Filter points that are too close, because we want one point for each object
+    min_distance = 100
+    red_x, red_y = filter_close_points(red_x, red_y, min_distance)
+    green_x, green_y = filter_close_points(green_x, green_y, min_distance)
 
     return red_x, red_y, green_x, green_y
 
+# helper function for filtering too close points
+def filter_close_points(x_coords: List[int], y_coords: List[int], min_distance: int) -> Tuple[List[int], List[int]]:
+    filtered_x, filtered_y = [], []
+    points = sorted(zip(x_coords, y_coords))
+
+    if not points:
+        return filtered_x, filtered_y
+
+    prev_x, prev_y = points[0]
+    filtered_x.append(prev_x)
+    filtered_y.append(prev_y)
+
+    for x, y in points[1:]:
+        if np.sqrt((x - prev_x) ** 2 + (y - prev_y) ** 2) >= min_distance:
+            filtered_x.append(x)
+            filtered_y.append(y)
+            prev_x, prev_y = x, y
+
+    return filtered_x, filtered_y
 
 
 ### GIVEN CODE TO TEST YOUR IMPLENTATION AND PLOT THE PICTURES
