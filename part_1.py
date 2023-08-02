@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from scipy import signal as sg
+from scipy import signal as sg, ndimage
 from scipy.ndimage import maximum_filter
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -25,7 +25,9 @@ GREEN_Y_COORDINATES = List[int]
 
 def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, list]:
 
-    blur = cv2.GaussianBlur(c_image, (3,3), 0.3)
+    c_image = ndimage.maximum_filter(c_image, 0.5)
+
+    blur = cv2.GaussianBlur(c_image, (5,5), 0.6)
 
     # Convert the image to the HSV color space for better color detection
     hsv_image = cv2.cvtColor(blur, cv2.COLOR_RGB2HSV)
@@ -42,14 +44,15 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, li
     green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
 
     # Apply maximum_filter to the green mask to enhance the green areas
-    green_mask = maximum_filter(green_mask, size=10)
-    red_mask = maximum_filter(red_mask, size=10)
+    green_mask = maximum_filter(green_mask, size=20)
+    red_mask = maximum_filter(red_mask, size=20)
 
     # Use morphological operations to clean up the green mask and remove noise
     kernel = np.array([[-1, -1, -1],
                        [-1, 8, -1],
-                       [-1, -1, -1]])
+                       [-1, -1, -1]])/9
     green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
+    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
 
     # Apply convolution with the provided kernel to green and red masks
     green_mask = cv2.filter2D(green_mask, -1, kernel)
