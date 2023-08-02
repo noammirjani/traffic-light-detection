@@ -23,10 +23,12 @@ GREEN_X_COORDINATES = List[int]
 GREEN_Y_COORDINATES = List[int]
 
 
-
 def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, list]:
+
+    blur = cv2.GaussianBlur(c_image, (5,5),1)
+
     # Convert the image to the HSV color space for better color detection
-    hsv_image = cv2.cvtColor(c_image, cv2.COLOR_RGB2HSV)
+    hsv_image = cv2.cvtColor(blur, cv2.COLOR_RGB2HSV)
 
     # Define the lower and upper thresholds for red and green colors in HSV space
     lower_red = np.array([0, 100, 100])
@@ -34,7 +36,7 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, li
 
     # Define the lower and upper thresholds for green colors in HSV space
     # Fine-tune these values based on the specific green color of traffic lights
-    lower_green = np.array([40, 100, 100])
+    lower_green = np.array([50, 100, 100])
     upper_green = np.array([80, 255, 255])
 
     # Create masks for red and green colors using the specified thresholds
@@ -42,9 +44,9 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[list, list, list, li
     green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
 
     # Apply maximum_filter to the green mask to enhance the green areas
-    green_mask = maximum_filter(green_mask, size=100)  # Adjust the size as needed
+    green_mask = maximum_filter(green_mask, size=10)  # we can Adjust the size as needed
 
-   # red_mask = maximum_filter(red_mask, size=100)  # Adjust the size as needed
+    red_mask = maximum_filter(red_mask, size=10)  # we can Adjust the size as needed
 
 
     # Use morphological operations to clean up the green mask and remove noise
