@@ -21,8 +21,19 @@ GREEN_X_COORDINATES = List[int]
 GREEN_Y_COORDINATES = List[int]
 
 
-def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np.ndarray, lower_color: np.array, upper_color: np.array, color_threshold: int)\
-        -> Tuple[List[int], List[int]]:
+def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np.ndarray,
+                          lower_color: np.array, upper_color: np.array, color_threshold: int)\
+                          -> Tuple[List[int], List[int]]:
+    """
+    Finds the red or green traffic lights in the image.
+    :param c_image: The image to find the traffic lights in.
+    :param hsv_image: The image in HSV color space.
+    :param kernel: The kernel for the morphological operation.
+    :param lower_color: The lower threshold for the color.
+    :param upper_color: The upper threshold for the color.
+    :param color_threshold: The threshold for the color channel.
+    :return: The x and y coordinates of the red or green traffic lights.
+    """
     # Create masks for red and green colors using the specified thresholds
     color_mask = cv2.inRange(hsv_image, lower_color, upper_color)
     color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel)
@@ -38,6 +49,11 @@ def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np
 
 
 def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int], List[int], List[int]]:
+    """
+    Finds the red and green traffic lights in the image.
+    :param c_image: The image to find the traffic lights in.
+    :return: The x and y coordinates of the red and green traffic lights.
+    """
     c_image = ndimage.maximum_filter(c_image, 0.5)
     blur = cv2.GaussianBlur(c_image, (5, 5), 0.6)
     kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]]) / 9
@@ -64,8 +80,14 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int]
     return red_x, red_y, green_x, green_y
 
 
-# helper function for filtering too close points
 def filter_close_points(x_coords: List[int], y_coords: List[int], min_distance: int) -> Tuple[List[int], List[int]]:
+    """
+    Filters points that are too close to each other.
+    :param x_coords: The x coordinates of the points.
+    :param y_coords: The y coordinates of the points.
+    :param min_distance: The minimum distance between two points.
+    :return: The filtered x and y coordinates.
+    """
     filtered_x, filtered_y = [], []
     points = sorted(zip(x_coords, y_coords))
 
@@ -109,6 +131,13 @@ def show_image_and_gt(c_image: np.ndarray, objects: Optional[List[POLYGON_OBJECT
             plt.legend()
 
 
+def crop_images_by_points(c_image: np.ndarray, points: List[Tuple[int, int]]) -> List[np.ndarray]:
+    cropped_images = []
+    for point in points:
+        cropped_images.append(c_image[point[1] - 40:point[1] + 40, point[0] - 40:point[0] + 40])
+    return cropped_images
+
+
 def test_find_tfl_lights(image_path: str, image_json_path: Optional[str]=None, fig_num=None):
     """
     Run the attention code.
@@ -131,6 +160,8 @@ def test_find_tfl_lights(image_path: str, image_json_path: Optional[str]=None, f
     plt.plot(red_x, red_y, 'ro', markersize=4)
     plt.plot(green_x, green_y, 'go', markersize=4)
 
+    # crop_image = crop_image_by_coordinates(c_image, red_x, red_y, green_x, green_y)
+
 
 def main(argv=None):
     """
@@ -140,7 +171,6 @@ def main(argv=None):
 
     :param argv: In case you want to programmatically run this.
     """
-
     parser = argparse.ArgumentParser("Test TFL attention mechanism")
     parser.add_argument('-i', '--image', type=str, help='Path to an image')
     parser.add_argument("-j", "--json", type=str, help="Path to image json file -> GT for comparison")
