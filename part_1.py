@@ -55,7 +55,7 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int]
     red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
 
     # Threshold the image in the green channel to extract green areas
-    green_threshold = 140  # Fine-tune this threshold depending on our images, higher mean less dummy points
+    green_threshold = 130  # Fine-tune this threshold depending on our images, higher mean less dummy points
     green_channel = c_image[:, :, 1]
     green_mask_channel = (green_channel > green_threshold).astype(np.uint8)
 
