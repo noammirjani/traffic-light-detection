@@ -21,16 +21,17 @@ GREEN_X_COORDINATES = List[int]
 GREEN_Y_COORDINATES = List[int]
 
 
-def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np.ndarray, lower_color: np.array, upper_color: np.array)\
+def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np.ndarray, lower_color: np.array, upper_color: np.array, color_threshold: int)\
         -> Tuple[List[int], List[int]]:
     # Create masks for red and green colors using the specified thresholds
     color_mask = cv2.inRange(hsv_image, lower_color, upper_color)
     color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel)
-    color_threshold = 130  # Fine-tune this threshold depending on our images, higher mean less dummy points
+    # Find the contours of the red and green areas in the image
     color_channel = c_image[:, :, 1]
     color_mask_channel = (color_channel > color_threshold).astype(np.uint8)
     color_mask = cv2.bitwise_and(color_mask, color_mask_channel)
     color_contours, _ = cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # Find the center of mass of the red and green areas
     color_x = [int(np.mean(contour[:, :, 0])) for contour in color_contours] if color_contours else []
     color_y = [int(np.mean(contour[:, :, 1])) for contour in color_contours] if color_contours else []
     return color_x, color_y
@@ -52,8 +53,8 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int]
     upper_green = np.array([100, 255, 255])
 
     # Find the red and green areas in the image
-    red_x, red_y = find_ftl_single_color(c_image, hsv_image, kernel, lower_red, upper_red)
-    green_x, green_y = find_ftl_single_color(c_image, hsv_image, kernel, lower_green, upper_green)
+    red_x, red_y = find_ftl_single_color(c_image, hsv_image, kernel, lower_red, upper_red, 100)
+    green_x, green_y = find_ftl_single_color(c_image, hsv_image, kernel, lower_green, upper_green, 200)
 
     # Filter points that are too close, because we want one point for each object
     min_distance = 50
