@@ -1,7 +1,7 @@
-# from PIL import Image
 # import matplotlib.pyplot as plt
-# import cv2
-# import numpy as np
+# from PIL import Image
+# import os
+# import subprocess
 #
 # # Load the image using PIL
 # image_path = 'images_set/aachen/aachen_000092_000019_leftImg8bit.png'
@@ -14,6 +14,16 @@
 #
 # # Create a new figure to plot the crops
 # fig, axes = plt.subplots(1, len(x_coords), figsize=(15, 5))
+#
+#
+# def on_click(event):
+#     for i, ax in enumerate(axes):
+#         if event.inaxes == ax:
+#             subprocess.run(['open', image_path]) # For Mac
+#             # subprocess.run(['xdg-open', image_path]) # For Linux
+#             # subprocess.run(['start', image_path], shell=True) # For Windows
+#             break
+#
 #
 # for i, (x, y) in enumerate(zip(x_coords, y_coords)):
 #     # Define the coordinates for the rectangle to crop
@@ -29,9 +39,10 @@
 #     axes[i].imshow(cropped_image)
 #     axes[i].axis('off')
 #
-#     # Add a hyperlink to the image if it's hosted online
-#     # Replace 'url_to_image' with the actual URL
-#     axes[i].set_title("Link to Image", color='blue')
-#     axes[i].title.set_url('url_to_image')
+#     # Title
+#     axes[i].set_title("Click to View Full Image", color='blue')
+#
+# # Connect the click event to the on_click function
+# fig.canvas.mpl_connect('button_press_event', on_click)
 #
 # plt.show()
