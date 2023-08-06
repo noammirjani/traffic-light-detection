@@ -21,86 +21,91 @@ GREEN_Y_COORDINATES = List[int]
 
 def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np.ndarray, lower_color: np.array,
                           upper_color: np.array, color_threshold) \
-                          -> Tuple[List[int], List[int]]:
-    """
-    Finds the red and green areas in the image and returns their center of mass
-    :param c_image: The image to find the red and green areas in
-    :param hsv_image: The image in HSV color space
-    :param kernel: The kernel to use for morphological operations
-    :param lower_color: The lower threshold for the color
-    :param upper_color: The upper threshold for the color
-    :param color_threshold: The threshold for the color channel
-    :return: The x and y coordinates of the center of mass of the red and green areas
-    """
+        -> Tuple[List[int], List[int]]:
     # Create masks for red and green colors using the specified thresholds
     color_mask = cv2.inRange(hsv_image, lower_color, upper_color)
     color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel)
 
-    # Find the contours of the red and green areas in the image
     color_channel = c_image[:, :, 1]
     color_mask_channel = (color_channel > color_threshold).astype(np.uint8)
     color_mask = cv2.bitwise_and(color_mask, color_mask_channel)
     color_contours, _ = cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Find the center of mass of the red and green areas in the image
     color_x = [int(np.mean(contour[:, :, 0])) for contour in color_contours] if color_contours else []
     color_y = [int(np.mean(contour[:, :, 1])) for contour in color_contours] if color_contours else []
     return color_x, color_y
 
 
 def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int], List[int], List[int]]:
-    """
-    Finds the red and green areas in the image and returns their center of mass
-    :param c_image: The image to find the red and green areas in
-    :param kwargs: The parameters for the function
-    :return: The x and y coordinates of the center of mass of the red and green areas
-    """
     c_image = ndimage.maximum_filter(c_image, 0.5)
     blur = cv2.GaussianBlur(c_image, (5, 5), 0.6)
-    kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]]) / 9
+    kernel = np.array([[-1, -1, -1],
+                       [-1, 8, -1],
+                       [-1, -1, -1]]) / 9
 
     # Convert the image to the HSV color space for better color detection
     hsv_image = cv2.cvtColor(blur, cv2.COLOR_RGB2HSV)
-
     # Define the lower and upper thresholds for red and green colors in HSV space
     lower_red = np.array([0, 100, 100])
     upper_red = np.array([10, 255, 255])
     lower_green = np.array([50, 100, 100])
     upper_green = np.array([100, 255, 255])
 
+    # higher mean less points detected
+    red_color_threshold = 65
+    green_color_threshold = 145
+
     # Find the red and green areas in the image
-    red_x, red_y = find_ftl_single_color(c_image, hsv_image, kernel, lower_red, upper_red, 80)
-    green_x, green_y = find_ftl_single_color(c_image, hsv_image, kernel, lower_green, upper_green, 200)
+    red_x, red_y = find_ftl_single_color(c_image, hsv_image, kernel, lower_red, upper_red, red_color_threshold)
+    green_x, green_y = find_ftl_single_color(c_image, hsv_image, kernel, lower_green, upper_green,
+                                             green_color_threshold)
     # Filter points that are too close, because we want one point for each object
     min_distance = 50
     red_x, red_y = filter_close_points(red_x, red_y, min_distance)
     green_x, green_y = filter_close_points(green_x, green_y, min_distance)
 
+    #=-------------------------------------------------
+    c_image_copy = c_image.copy()
+    # Pass points as lists of tuples
+    rectangles_drawing(c_image_copy, list(zip(red_x, red_y)), list(zip(green_x, green_y)))
+
+    # Show the image with rectangles
+    plt.imshow(c_image_copy)
+    plt.plot(red_x, red_y, 'ro', markersize=4)
+    plt.plot(green_x, green_y, 'go', markersize=4)
+
     return red_x, red_y, green_x, green_y
 
 
-# helper function for filtering too close points
+
+# helper function for filtering too close points - it put one point instead of more than one
+# calculates the average point for each cluster of close points, providing a more central representation of the objects.
 def filter_close_points(x_coords: List[int], y_coords: List[int], min_distance: int) -> Tuple[List[int], List[int]]:
-    """
-    Filters points that are too close to each other
-    :param x_coords: The x coordinates of the points
-    :param y_coords: The y coordinates of the points
-    :param min_distance: The minimum distance between two points
-    :return: The filtered x and y coordinates
-    """
     filtered_x, filtered_y = [], []
     points = sorted(zip(x_coords, y_coords))
     if not points:
         return filtered_x, filtered_y
     prev_x, prev_y = points[0]
-    filtered_x.append(prev_x)
-    filtered_y.append(prev_y)
+    count = 1
+    sum_x, sum_y = prev_x, prev_y
+
     for x, y in points[1:]:
-        if np.sqrt((x - prev_x) ** 2 + (y - prev_y) ** 2) >= min_distance:
-            filtered_x.append(x)
-            filtered_y.append(y)
+        if np.sqrt((x - prev_x) ** 2 + (y - prev_y) ** 2) < min_distance:
+            sum_x += x
+            sum_y += y
+            count += 1
+        else:
+            filtered_x.append(int(sum_x / count))
+            filtered_y.append(int(sum_y / count))
             prev_x, prev_y = x, y
+            sum_x, sum_y = prev_x, prev_y
+            count = 1
+
+    if count > 0:
+        filtered_x.append(int(sum_x / count))
+        filtered_y.append(int(sum_y / count))
+
     return filtered_x, filtered_y
+
 
 
 def show_image_and_gt(c_image: np.ndarray, objects: Optional[List[POLYGON_OBJECT]], fig_num: int = None):
@@ -125,6 +130,7 @@ def show_image_and_gt(c_image: np.ndarray, objects: Optional[List[POLYGON_OBJECT
             # The legend provides a visual representation of the labels associated with the plotted objects.
             # It helps in distinguishing different objects in the plot based on their labels.
             plt.legend()
+
 
 
 def test_find_tfl_lights(image_path: str, image_json_path: Optional[str] = None, fig_num=None):
@@ -177,5 +183,56 @@ def main(argv=None):
     plt.show(block=True)
 
 
+# -----------------------------------------------------------------------------------------------------------
+
+# we dont need (NMS) non max suppression because we already have one point on one object
+# the NMS resposibale for filter out duplicate or overlapping bounding boxes (rectangles)
+
+class Rectangle:
+    def __init__(self, top_left_x, top_left_y, bottom_right_x, bottom_right_y):
+        self.top_left_x = top_left_x
+        self.top_left_y = top_left_y
+        self.bottom_right_x = bottom_right_x
+        self.bottom_right_y = bottom_right_y
+
+def rectangles_drawing(image: np.ndarray, red_points: List[tuple], green_points: List[tuple]):
+    """
+    Draw rectangles around points with a specified width and height.
+
+    :param image: The input image as a numpy ndarray.
+    :param red_points: A list of tuples containing the (x, y) coordinates of red points.
+    :param green_points: A list of tuples containing the (x, y) coordinates of green points.
+    """
+    RED_COLOR = (255, 0, 0)
+    GREEN_COLOR = (0, 255, 0)
+    RECTANGLE_WIDTH = 30
+    RED_RECTANGLE_HEIGHT = 80
+    GREEN_RECTANGLE_HEIGHT = 80
+
+    red_rectangles = [Rectangle(x - RECTANGLE_WIDTH//2, y - RED_RECTANGLE_HEIGHT//2,
+                                x + RECTANGLE_WIDTH//2, y + RED_RECTANGLE_HEIGHT//2)
+                      for x, y in red_points]
+
+    green_rectangles = [Rectangle(x - RECTANGLE_WIDTH//2, y - GREEN_RECTANGLE_HEIGHT//2,
+                                  x + RECTANGLE_WIDTH//2, y + GREEN_RECTANGLE_HEIGHT//2)
+                        for x, y in green_points]
+
+    for rect in red_rectangles:
+        cv2.rectangle(image, (rect.top_left_x, rect.top_left_y), (rect.bottom_right_x, rect.bottom_right_y), RED_COLOR, 1)
+        # Add the title above the rectangle
+        cv2.putText(image, "Red Traffic", (rect.top_left_x, rect.top_left_y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED_COLOR, 1, cv2.LINE_AA)
+
+    for rect in green_rectangles:
+        cv2.rectangle(image, (rect.top_left_x, rect.top_left_y), (rect.bottom_right_x, rect.bottom_right_y), GREEN_COLOR, 1)
+        # Add the title above the rectangle
+        cv2.putText(image, "Green Traffic", (rect.top_left_x, rect.top_left_y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, GREEN_COLOR, 1, cv2.LINE_AA)
+
+
+
+
+
+# -----------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     main()
