@@ -71,12 +71,13 @@ def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np
 
     # apply threshold
     color_threshold = (filtered_channel > threshold_val).astype(np.uint8)
-    color_threshold = maximum_filter(color_threshold, size=50)
     color_contours, _ = cv2.findContours(color_threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     # Find the center of mass of the red and green areas in the image
     color_x = [int(np.mean(contour[:, :, 0])) for contour in color_contours]
     color_y = [int(np.mean(contour[:, :, 1])) for contour in color_contours]
+
+    color_x, color_y = filter_close_points(color_x, color_y, 50)
 
     return color_x, color_y, color_contours
 
@@ -105,12 +106,39 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int]
 
     # Find the red and green areas in the image
     red_x, red_y, red_contours = find_ftl_single_color(c_image, hsv_image, kernel, lower_red, upper_red, 100, 2)
-    green_x, green_y, green_contours = find_ftl_single_color(c_image, hsv_image, kernel, lower_green, upper_green, 180,
-                                                             1)
-
-    # draw_bounding_boxes(c_image, red_contours, green_contours)
+    green_x, green_y, green_contours = find_ftl_single_color(c_image, hsv_image, kernel, lower_green, upper_green, 180, 1)
 
     return red_x, red_y, green_x, green_y
+
+
+# helper function for filtering too close points - it put one point instead of more than one
+# calculates the average point for each cluster of close points, providing a more central representation of the objects.
+def filter_close_points(x_coords: List[int], y_coords: List[int], min_distance: int) -> Tuple[List[int], List[int]]:
+    filtered_x, filtered_y = [], []
+    points = sorted(zip(x_coords, y_coords))
+    if not points:
+        return filtered_x, filtered_y
+    prev_x, prev_y = points[0]
+    count = 1
+    sum_x, sum_y = prev_x, prev_y
+
+    for x, y in points[1:]:
+        if np.sqrt((x - prev_x) ** 2 + (y - prev_y) ** 2) < min_distance:
+            sum_x += x
+            sum_y += y
+            count += 1
+        else:
+            filtered_x.append(int(sum_x / count))
+            filtered_y.append(int(sum_y / count))
+            prev_x, prev_y = x, y
+            sum_x, sum_y = prev_x, prev_y
+            count = 1
+
+    if count > 0:
+        filtered_x.append(int(sum_x / count))
+        filtered_y.append(int(sum_y / count))
+
+    return filtered_x, filtered_y
 
 
 def crop_image(image: np.ndarray, x: int, y: int, color: str) -> np.ndarray:
