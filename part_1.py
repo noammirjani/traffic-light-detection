@@ -7,7 +7,10 @@ from PIL import Image
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Tuple, Any, Sequence
 from scipy.ndimage import maximum_filter
+from scipy.spatial.distance import pdist
 import os
+from sklearn.cluster import DBSCAN
+from sklearn.neighbors import NearestNeighbors
 
 
 DEFAULT_BASE_DIR: str = 'INSERT_YOUR_DIR_WITH_PNG_AND_JSON_HERE'
@@ -77,7 +80,7 @@ def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np
     color_x = [int(np.mean(contour[:, :, 0])) for contour in color_contours]
     color_y = [int(np.mean(contour[:, :, 1])) for contour in color_contours]
 
-    color_x, color_y = filter_close_points(color_x, color_y, 50)
+    color_x, color_y = filter_close_points(color_x, color_y)
 
     return color_x, color_y, color_contours
 
@@ -111,32 +114,24 @@ def find_tfl_lights(c_image: np.ndarray, **kwargs) -> Tuple[List[int], List[int]
     return red_x, red_y, green_x, green_y
 
 
-# helper function for filtering too close points - it put one point instead of more than one
-# calculates the average point for each cluster of close points, providing a more central representation of the objects.
-def filter_close_points(x_coords: List[int], y_coords: List[int], min_distance: int) -> Tuple[List[int], List[int]]:
+def filter_close_points(x_coords: List[int], y_coords: List[int]) -> Tuple[List[int], List[int]]:
     filtered_x, filtered_y = [], []
-    points = sorted(zip(x_coords, y_coords))
-    if not points:
+    points = np.array(list(zip(x_coords, y_coords)))
+
+    if len(points) == 0:
         return filtered_x, filtered_y
-    prev_x, prev_y = points[0]
-    count = 1
-    sum_x, sum_y = prev_x, prev_y
 
-    for x, y in points[1:]:
-        if np.sqrt((x - prev_x) ** 2 + (y - prev_y) ** 2) < min_distance:
-            sum_x += x
-            sum_y += y
-            count += 1
-        else:
-            filtered_x.append(int(sum_x / count))
-            filtered_y.append(int(sum_y / count))
-            prev_x, prev_y = x, y
-            sum_x, sum_y = prev_x, prev_y
-            count = 1
+    clustering = DBSCAN(eps=50, min_samples=1).fit(points)
 
-    if count > 0:
-        filtered_x.append(int(sum_x / count))
-        filtered_y.append(int(sum_y / count))
+    labels = clustering.labels_
+    unique_labels = set(labels)
+
+    for label in unique_labels:
+        cluster_points = points[labels == label]
+        center_x = np.mean(cluster_points[:, 0])
+        center_y = np.mean(cluster_points[:, 1])
+        filtered_x.append(int(center_x))
+        filtered_y.append(int(center_y))
 
     return filtered_x, filtered_y
 
