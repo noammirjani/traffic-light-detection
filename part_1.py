@@ -48,8 +48,32 @@ GREEN_Y_COORDINATES = List[int]
 def make_crop(*args, **kwargs):
     return 1, 2, 3, 4, 'crop_data'
 
-def check_crop(*args, **kwargs):
-    return True, True
+def check_crop(image_json_path: str, x0: int, y0: int, x1: int, y1: int, color: str) -> Tuple[bool, bool]:
+    """
+    Check if the crop contains a traffic light based on the ground truth.
+
+    Args:
+        image_json_path (str): The path to the image's JSON file.
+        x0, y0, x1, y1: The coordinates of the crop.
+        color (str): The color of the traffic light.
+
+    Returns:
+        Tuple[bool, bool]: Whether the crop contains a traffic light and whether it should be ignored.
+    """
+    # Load the image's JSON file
+    image_json = json.load(Path(image_json_path).open())
+
+    # Iterate over the objects in the JSON file
+    for image_object in image_json['objects']:
+        if image_object['label'] == 'traffic light':
+            # Check if the traffic light's coordinates are within the crop's coordinates
+            for x, y in image_object['polygon']:
+                if x0 <= x <= x1 and y0 <= y <= y1:
+                    # The crop contains a traffic light
+                    return True, False
+
+    # The crop does not contain a traffic light
+    return False, True
 
 def save_for_part_2(crops_df: DataFrame):
     if not ATTENTION_PATH.exists():
@@ -57,7 +81,7 @@ def save_for_part_2(crops_df: DataFrame):
     crops_sorted: DataFrame = crops_df.sort_values(by=SEQ)
     crops_sorted.to_csv(ATTENTION_PATH / CROP_CSV_NAME, index=False)
 
-def create_crops(df: DataFrame) -> DataFrame:
+def create_crops(df: DataFrame, image_json_path: Optional[str] = None) -> DataFrame:
     if not CROP_DIR.exists():
         CROP_DIR.mkdir()
     result_df = DataFrame(columns=CROP_RESULT)
@@ -69,7 +93,8 @@ def create_crops(df: DataFrame) -> DataFrame:
         result_template[X0], result_template[X1], result_template[Y0], result_template[Y1] = x0, x1, y0, y1
         crop_path: str = '/data/crops/my_crop_unique_name.probably_containing_the_original_image_name+somthing_unique'
         result_template[CROP_PATH] = crop_path
-        result_template[IS_TRUE], result_template[IGNOR] = check_crop(df[GTIM_PATH], crop)
+        print(row[GTIM_PATH])
+        result_template[IS_TRUE], result_template[IGNOR] = check_crop(image_json_path, x0, y0, x1, y1, row[COLOR])
         result_df = result_df._append(result_template, ignore_index=True)
     save_for_part_2(result_df)
     return result_df
@@ -299,7 +324,7 @@ def test_find_tfl_lights(image_path: str, image_json_path: Optional[str] = None,
     c_image: np.ndarray = np.array(image)
     objects = None
     if image_json_path:
-        image_json = json.load(Path(image_json_path).open())
+        image_json = json.load(Path(image_json_path).open(encoding="utf-8"))
         objects: List[POLYGON_OBJECT] = [image_object for image_object in image_json['objects']
                                          if image_object['label'] in TFL_LABEL]
     show_image_and_gt(c_image, objects, fig_num)
@@ -340,7 +365,7 @@ def integrated_find_tfl_lights(image_path: str, image_json_path: Optional[str] =
         GTIM_PATH: [image_path for _ in range(len(red_x + green_x))]
     }
     df = DataFrame(df_data)
-    create_crops(df)
+    create_crops(df, image_json_path)
 
     crops_r = crop_and_save(c_image, red_x, red_y, 'ro')
     crops_g = crop_and_save(c_image, green_x, green_y, 'go')
@@ -361,6 +386,7 @@ def main(argv=None):
             image_path: str = image.as_posix()
             path: Optional[str] = image_path.replace('_leftImg8bit.png', '_gtFine_polygons.json')
             image_json_path: Optional[str] = path if Path(path).exists() else None
+            print(image_json_path)
             integrated_find_tfl_lights(image_path, image_json_path)
     if args.image and args.json:
         integrated_find_tfl_lights(args.image, args.json)
