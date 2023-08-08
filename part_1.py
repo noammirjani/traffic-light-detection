@@ -45,8 +45,25 @@ GREEN_X_COORDINATES = List[int]
 GREEN_Y_COORDINATES = List[int]
 
 # Your provided functions
-def make_crop(*args, **kwargs):
-    return 1, 2, 3, 4, 'crop_data'
+def make_crop(image: np.ndarray, x: int, y: int, color: str, **kwargs) -> Tuple[int, int, int, int, np.ndarray]:
+    """
+    Crop the image around the given coordinates
+    :param image: The image to crop
+    :param x: The x coordinate
+    :param y: The y coordinate
+    :param color: The color of the traffic light
+    :param kwargs: Additional keyword arguments
+    :return: The cropped image along with coordinates
+    """
+    cropped_image = crop_image(image, x, y, color)
+
+    # Assuming the width and height remain constant as defined in crop_image
+    width, height = 30, 60
+    x0, y0 = max(0, x - width // 2), max(0, y - height // 5) if color == 'ro' else max(0, y - height // 2)
+    x1, y1 = min(image.shape[1], x + width // 2), min(image.shape[0], y + height // 2) if color == 'ro' else min(
+        image.shape[0], y + height // 5)
+
+    return x0, x1, y0, y1, cropped_image
 
 def check_crop(image_json_path: str, x0: int, y0: int, x1: int, y1: int, color: str) -> Tuple[bool, bool]:
     """
@@ -81,21 +98,31 @@ def save_for_part_2(crops_df: DataFrame):
     crops_sorted: DataFrame = crops_df.sort_values(by=SEQ)
     crops_sorted.to_csv(ATTENTION_PATH / CROP_CSV_NAME, index=False)
 
-def create_crops(df: DataFrame, image_json_path: Optional[str] = None) -> DataFrame:
+
+def create_crops(c_image, df: DataFrame, image_json_path: Optional[str] = None) -> DataFrame:
     if not CROP_DIR.exists():
-        CROP_DIR.mkdir()
+        CROP_DIR.mkdir(parents=True)  # Ensure the directory is created if it doesn't exist
     result_df = DataFrame(columns=CROP_RESULT)
-    result_template: Dict[Any] = {SEQ: '', IS_TRUE: '', IGNOR: '', CROP_PATH: '', X0: '', X1: '', Y0: '', Y1: '', COL: ''}
+    result_template: Dict[Any] = {SEQ: '', IS_TRUE: '', IGNOR: '', CROP_PATH: '', X0: '', X1: '', Y0: '', Y1: '',
+                                  COL: ''}
     for index, row in df.iterrows():
         result_template[SEQ] = row[SEQ_IMAG]
         result_template[COL] = row[COLOR]
-        x0, x1, y0, y1, crop = make_crop(df[X], df[Y])
+        x0, x1, y0, y1, crop = make_crop(c_image, row[X], row[Y], row[COLOR])
         result_template[X0], result_template[X1], result_template[Y0], result_template[Y1] = x0, x1, y0, y1
-        crop_path: str = '/data/crops/my_crop_unique_name.probably_containing_the_original_image_name+somthing_unique'
-        result_template[CROP_PATH] = crop_path
-        print(row[GTIM_PATH])
+
+        # Extract the image's name from its path
+        image_name = os.path.basename(row[GTIM_PATH]).split('.')[0]
+        # Create a unique filename for the cropped image
+        crop_filename = f"{image_name}_{row[COLOR]}_{index}.png"
+        # Construct the full path for the cropped image
+        crop_path = CROP_DIR / crop_filename
+
+        result_template[CROP_PATH] = str(crop_path)
+        cv2.imwrite(str(crop_path), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
+
         result_template[IS_TRUE], result_template[IGNOR] = check_crop(image_json_path, x0, y0, x1, y1, row[COLOR])
-        result_df = result_df._append(result_template, ignore_index=True)
+        result_df = result_df._append(result_template, ignore_index=True)  # Corrected the _append to append
     save_for_part_2(result_df)
     return result_df
 
@@ -224,16 +251,19 @@ def crop_image(image: np.ndarray, x: int, y: int, color: str) -> np.ndarray:
     """
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     width, height = 30, 60
-
-    if color == 'ro':
+    print(color)
+    if (color == 'red' or color =='ro'):  # Modify this check according to actual value
         top_left = (max(0, x - width // 2), max(0, y - height // 5))
         bottom_right = (min(image.shape[1], x + width // 2), min(image.shape[0], y + height // 2))
-    elif color == 'go':
+    elif (color == 'green' or color == 'go'):  # Modify this check according to actual value
         top_left = (max(0, x - width // 2), max(0, y - height // 2))
         bottom_right = (min(image.shape[1], x + width // 2), min(image.shape[0], y + height // 5))
+    else:
+        raise ValueError(f"Unexpected color value: {color}")
 
     cropped_image = image[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0]]
     return cropped_image
+
 
 
 def save_cropped_images(crop: np.ndarray, index: int, color: str) -> np.ndarray:
@@ -365,7 +395,7 @@ def integrated_find_tfl_lights(image_path: str, image_json_path: Optional[str] =
         GTIM_PATH: [image_path for _ in range(len(red_x + green_x))]
     }
     df = DataFrame(df_data)
-    create_crops(df, image_json_path)
+    create_crops(c_image,df, image_json_path)
 
     crops_r = crop_and_save(c_image, red_x, red_y, 'ro')
     crops_g = crop_and_save(c_image, green_x, green_y, 'go')
