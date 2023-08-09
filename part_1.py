@@ -6,132 +6,21 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Tuple, Any, Sequence
+from scipy.ndimage import maximum_filter
+from scipy.spatial.distance import pdist
 import os
 from sklearn.cluster import DBSCAN
-from pandas import DataFrame
-from shapely.geometry import Polygon, box
+from sklearn.neighbors import NearestNeighbors
 
-# Constants from your provided code
-SEQ: str = 'seq'
-IS_TRUE: str = 'is_true'
-IGNOR: str = 'is_ignore'
-CROP_PATH: str = 'path'
-X0: str = 'x0'
-X1: str = 'x1'
-Y0: str = 'y0'
-Y1: str = 'y1'
-COL: str = 'col'
-SEQ_IMAG: str = 'seq_imag'
-GTIM_PATH: str = 'gtim_path'
-X: str = 'x'
-Y: str = 'y'
-COLOR: str = 'color'
-CROP_RESULT: List[str] = [SEQ, IS_TRUE, IGNOR, CROP_PATH, X0, X1, Y0, Y1, COL]
-BASE_SNC_DIR: Path = Path.cwd()
-DATA_DIR: Path = (BASE_SNC_DIR / 'data')
-CROP_DIR: Path = DATA_DIR / 'crops'
-ATTENTION_PATH: Path = DATA_DIR / 'attention_results'
-CROP_CSV_NAME: str = 'crop_results.csv'
 
-# Existing code constants
 DEFAULT_BASE_DIR: str = 'INSERT_YOUR_DIR_WITH_PNG_AND_JSON_HERE'
+# The label we want to look for in the polygons json file
 TFL_LABEL = ['traffic light']
 POLYGON_OBJECT = Dict[str, Union[str, List[int]]]
 RED_X_COORDINATES = List[int]
 RED_Y_COORDINATES = List[int]
 GREEN_X_COORDINATES = List[int]
 GREEN_Y_COORDINATES = List[int]
-
-
-# Your provided functions
-def make_crop(image: np.ndarray, x: int, y: int, color: str, **kwargs) -> Tuple[int, int, int, int, np.ndarray]:
-    """
-    Crop the image around the given coordinates
-    :param image: The image to crop
-    :param x: The x coordinate
-    :param y: The y coordinate
-    :param color: The color of the traffic light
-    :param kwargs: Additional keyword arguments
-    :return: The cropped image along with coordinates
-    """
-    cropped_image = crop_image(image, x, y, color)
-
-    # Assuming the width and height remain constant as defined in crop_image
-    width, height = 50, 100
-    x0, y0 = max(0, x - width // 2), max(0, y - height // 5) if color == 'ro' else max(0, y - height // 2)
-    x1, y1 = min(image.shape[1], x + width // 2), min(image.shape[0], y + height // 2) if color == 'ro' else min(
-        image.shape[0], y + height // 5)
-
-    return x0, x1, y0, y1, cropped_image
-
-
-def check_crop(image_json_path: str, x0: int, y0: int, x1: int, y1: int, color: str) -> Tuple[bool, bool]:
-    """
-    Check if the crop is valid
-    :param image_json_path: The path to the json file
-    :param x0: The x0 coordinate
-    :param y0: The y0 coordinate
-    :param x1: The x1 coordinate
-    :param y1: The y1 coordinate
-    :param color: The color of the traffic light
-    :return: A tuple of two booleans, the first indicates if the crop is valid,
-             the second indicates if the crop should be ignored
-    """
-    image_json = json.load(Path(image_json_path).open())
-    tfls = [image_object for image_object in image_json['objects'] if image_object['label'] == "traffic light"]
-
-    tfl_count = 0
-    crop_img = box(x0, y0, x1, y1)
-
-    for tfl in tfls:
-        poly = Polygon(tfl['polygon'])
-        if crop_img.contains(poly):
-            tfl_count += 1
-        elif crop_img.intersects(poly):
-            return False, True  # half traffic light, ignore
-
-    if tfl_count == 1:
-        return True, False  # exactly one traffic light, don't ignore
-
-    if tfl_count > 1:
-        return False, True  # more than one traffic light, ignore
-
-    return False, False  # no traffic light, don't ignore
-
-
-def save_for_part_2(crops_df: DataFrame):
-    if not ATTENTION_PATH.exists():
-        ATTENTION_PATH.mkdir()
-    crops_sorted: DataFrame = crops_df.sort_values(by=SEQ)
-    crops_sorted.to_csv(ATTENTION_PATH / CROP_CSV_NAME, index=False)
-
-
-def create_crops(c_image, df: DataFrame, image_json_path: Optional[str] = None) -> DataFrame:
-    if not CROP_DIR.exists():
-        CROP_DIR.mkdir(parents=True)  # Ensure the directory is created if it doesn't exist
-    result_df = DataFrame(columns=CROP_RESULT)
-    result_template: Dict[Any] = {SEQ: '', IS_TRUE: '', IGNOR: '', CROP_PATH: '', X0: '', X1: '', Y0: '', Y1: '',
-                                  COL: ''}
-    for index, row in df.iterrows():
-        result_template[SEQ] = row[SEQ_IMAG]
-        result_template[COL] = row[COLOR]
-        x0, x1, y0, y1, crop = make_crop(c_image, row[X], row[Y], row[COLOR])
-        result_template[X0], result_template[X1], result_template[Y0], result_template[Y1] = x0, x1, y0, y1
-
-        # Extract the image's name from its path
-        image_name = os.path.basename(row[GTIM_PATH]).split('.')[0]
-        # Create a unique filename for the cropped image
-        crop_filename = f"{image_name}_{row[COLOR]}_{index}.png"
-        # Construct the full path for the cropped image
-        crop_path = CROP_DIR / crop_filename
-
-        result_template[CROP_PATH] = str(crop_path)
-        cv2.imwrite(str(crop_path), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
-
-        result_template[IS_TRUE], result_template[IGNOR] = check_crop(image_json_path, x0, y0, x1, y1, row[COLOR])
-        result_df = result_df._append(result_template, ignore_index=True)  # Corrected the _append to append
-    save_for_part_2(result_df)
-    return result_df
 
 
 def draw_bounding_boxes(image: np.ndarray, red_x: List[int], red_y: List[int], green_x: List[int],
@@ -145,7 +34,7 @@ def draw_bounding_boxes(image: np.ndarray, red_x: List[int], red_y: List[int], g
     :param green_y: The y coordinates of the green traffic lights
     :return: The image with the bounding boxes drawn on it
     """
-    width, height = 50, 100
+    width, height = 30, 60
 
     # Iterate over the red and green coordinates, drawing rectangles of the fixed size around them
     for x, y in zip(red_x, red_y):
@@ -192,6 +81,7 @@ def find_ftl_single_color(c_image: np.ndarray, hsv_image: np.ndarray, kernel: np
     color_y = [int(np.mean(contour[:, :, 1])) for contour in color_contours]
 
     color_x, color_y = filter_close_points(color_x, color_y)
+
     return color_x, color_y, color_contours
 
 
@@ -232,6 +122,7 @@ def filter_close_points(x_coords: List[int], y_coords: List[int]) -> Tuple[List[
         return filtered_x, filtered_y
 
     clustering = DBSCAN(eps=50, min_samples=1).fit(points)
+
     labels = clustering.labels_
     unique_labels = set(labels)
 
@@ -256,15 +147,13 @@ def crop_image(image: np.ndarray, x: int, y: int, color: str) -> np.ndarray:
     """
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     width, height = 30, 60
-    print(color)
-    if color == 'red' or color == 'ro':  # Modify this check according to actual value
+
+    if color == 'ro':
         top_left = (max(0, x - width // 2), max(0, y - height // 5))
         bottom_right = (min(image.shape[1], x + width // 2), min(image.shape[0], y + height // 2))
-    elif color == 'green' or color == 'go':  # Modify this check according to actual value
+    elif color == 'go':
         top_left = (max(0, x - width // 2), max(0, y - height // 2))
         bottom_right = (min(image.shape[1], x + width // 2), min(image.shape[0], y + height // 5))
-    else:
-        raise ValueError(f"Unexpected color value: {color}")
 
     cropped_image = image[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0]]
     return cropped_image
@@ -285,18 +174,26 @@ def save_cropped_images(crop: np.ndarray, index: int, color: str) -> np.ndarray:
 
 
 def show_image_and_gt(c_image: np.ndarray, objects: Optional[List[POLYGON_OBJECT]], fig_num: int = None):
+    # ensure a fresh canvas for plotting the image and objects.
     plt.figure(fig_num).clf()
+    # displays the input image.
     plt.imshow(c_image)
     labels = set()
     if objects:
         for image_object in objects:
+            # Extract the 'polygon' array from the image object
             poly: np.array = np.array(image_object['polygon'])
+            # Use advanced indexing to create a closed polygon array
+            # The modulo operation ensures that the array is indexed circularly, closing the polygon
             polygon_array = poly[np.arange(len(poly)) % len(poly)]
+            # gets the x coordinates (first column -> 0) anf y coordinates (second column -> 1)
             x_coordinates, y_coordinates = polygon_array[:, 0], polygon_array[:, 1]
             color = 'b'
             plt.plot(x_coordinates, y_coordinates, color, label=image_object['label'])
             labels.add(image_object['label'])
         if 1 < len(labels):
+            # The legend provides a visual representation of the labels associated with the plotted objects.
+            # It helps in distinguishing different objects in the plot based on their labels.
             plt.legend()
 
 
@@ -307,6 +204,7 @@ def plot_cropped_images(original_image, cropped_images):
     :param cropped_images: The cropped images
     """
     plt.figure(figsize=(20, 10))
+
     # Plot the original image with bounding boxes
     plt.subplot(2, 1, 1)
     plt.imshow(original_image)
@@ -349,7 +247,7 @@ def test_find_tfl_lights(image_path: str, image_json_path: Optional[str] = None,
     c_image: np.ndarray = np.array(image)
     objects = None
     if image_json_path:
-        image_json = json.load(Path(image_json_path).open(encoding="utf-8"))
+        image_json = json.load(Path(image_json_path).open())
         objects: List[POLYGON_OBJECT] = [image_object for image_object in image_json['objects']
                                          if image_object['label'] in TFL_LABEL]
     show_image_and_gt(c_image, objects, fig_num)
@@ -366,57 +264,33 @@ def test_find_tfl_lights(image_path: str, image_json_path: Optional[str] = None,
     plot_cropped_images(c_image, crops_r + crops_g)
 
 
-def integrated_find_tfl_lights(image_path: str, image_json_path: Optional[str] = None, fig_num=None):
-    image: Image = Image.open(image_path)
-    c_image: np.ndarray = np.array(image)
-    objects = None
-    if image_json_path:
-        image_json = json.load(Path(image_json_path).open())
-        objects: List[POLYGON_OBJECT] = [image_object for image_object in image_json['objects'] if
-                                         image_object['label'] in TFL_LABEL]
-    show_image_and_gt(c_image, objects, fig_num)
-    red_x, red_y, green_x, green_y = find_tfl_lights(c_image)
-    bounded_image = draw_bounding_boxes(c_image, red_x, red_y, green_x, green_y)
-    plt.imshow(bounded_image)
-    plt.plot(red_x, red_y, 'ro', markersize=4)
-    plt.plot(green_x, green_y, 'go', markersize=4)
-
-    # Create DataFrame for the crops
-    df_data = {
-        SEQ_IMAG: [i for i in range(len(red_x + green_x))],
-        X: red_x + green_x,
-        Y: red_y + green_y,
-        COLOR: ["red"] * len(red_x) + ["green"] * len(green_x),
-        GTIM_PATH: [image_path for _ in range(len(red_x + green_x))]
-    }
-    df = DataFrame(df_data)
-    create_crops(c_image,df, image_json_path)
-
-    crops_r = crop_and_save(c_image, red_x, red_y, 'ro')
-    crops_g = crop_and_save(c_image, green_x, green_y, 'go')
-    plot_cropped_images(c_image, crops_r + crops_g)
-
-
-# Main function
 def main(argv=None):
+    """
+    It's nice to have a standalone tester for the algorithm.
+    Consider looping over some images from here, so you can manually examine the results.
+    Keep this functionality even after you have all system running, because you sometime want to debug/improve a module.
+    :param argv: In case you want to programmatically run this.
+    """
     parser = argparse.ArgumentParser("Test TFL attention mechanism")
     parser.add_argument('-i', '--image', type=str, help='Path to an image')
     parser.add_argument("-j", "--json", type=str, help="Path to image json file -> GT for comparison")
     parser.add_argument('-d', '--dir', type=str, help='Directory to scan images in')
     args = parser.parse_args(argv)
+    # If you entered a custom dir to run from or the default dir exist in your project then:
     directory_path: Path = Path(args.dir or DEFAULT_BASE_DIR)
     if directory_path.exists():
+        # gets a list of all the files in the directory that ends with "_leftImg8bit.png".
         file_list: List[Path] = list(directory_path.glob('*_leftImg8bit.png'))
         for image in file_list:
+            # Convert the Path object to a string using as_posix() method
             image_path: str = image.as_posix()
             path: Optional[str] = image_path.replace('_leftImg8bit.png', '_gtFine_polygons.json')
             image_json_path: Optional[str] = path if Path(path).exists() else None
-            print(image_json_path)
-            integrated_find_tfl_lights(image_path, image_json_path)
+            test_find_tfl_lights(image_path, image_json_path)
     if args.image and args.json:
-        integrated_find_tfl_lights(args.image, args.json)
+        test_find_tfl_lights(args.image, args.json)
     elif args.image:
-        integrated_find_tfl_lights(args.image)
+        test_find_tfl_lights(args.image)
     plt.show(block=True)
 
 
