@@ -1,18 +1,9 @@
-## CityScape Traffic Light Detection and Verification
+# Traffic Light Detection Project
 
-### Data
+This project focuses on traffic light detection using image processing techniques and neural networks. 
 
-For details about cityscape, see https://www.cityscapes-dataset.com/dataset-overview/
-To download after login: https://www.cityscapes-dataset.com/downloads/
-Need to download:
-- gtFine_trainvaltest.zip (241MB)
-- leftImg8bit_trainvaltest.zip (11GB)  
-(Can also download the leftImg8bit_trainextra.zip (44GB), but it's pretty big...)
+## Workflow
+The workflow begins with a high-pass filter convolution for image enhancement and a conversion to the HSV color space. After this step, red and green filters are applied to isolate potential traffic lights, resulting in crops of the suspected traffic lights. These cropped images are then provided as input to the neural network for classification. The primary purpose of the neural network is to determine if these isolated regions indeed represent traffic lights, making it a pivotal component of the traffic light detection process.
 
-### Local arrangement of the files
-No matter how you arrange your files, just have a CSV file with at least the following columns:  
-imag_path gtim_path json_path train_test_val  
-Add what you want in the comments (or ignore)  
-All paths are absolute relative to the CSV folder.  
-
-- You may try to use `data_utils.make_files_lists` to arrange the data
+## Additional Information
+For additional images, detailed explanations of our code, and to see the results in action, please refer to the attached presentation named [final_presentation.pptx](./final_presentation.pptx).
