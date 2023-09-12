@@ -1,4 +1,5 @@
 # Traffic Light Detection Project
+### Mobileye project in bootcamp of Scale-Up Velocity 2023
 
 This project focuses on traffic light detection using image processing techniques and neural networks. 
 
